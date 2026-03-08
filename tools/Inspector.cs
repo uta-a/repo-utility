@@ -76,5 +76,121 @@ class Inspector
                 }
             }
         }
+        else if (mode == "items")
+        {
+            var allTypes = asm.GetTypes();
+            var bf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+
+            // SemiFunc enums related to items
+            var semiFuncEnumNames = new[] { "itemType", "itemVolume", "emojiIcon", "itemSecretShopType" };
+
+            // Collect target types
+            bool IsItemType(Type t)
+            {
+                if (t.FullName == null) return false;
+                if (t.FullName.Contains("<>") || t.FullName.Contains("<PrivateImplementationDetails>")) return false;
+                // Item-prefixed types (top-level only, not nested under non-Item parents)
+                if (t.Name.StartsWith("Item") && t.DeclaringType == null) return true;
+                // SemiFunc nested enums
+                if (t.DeclaringType?.Name == "SemiFunc" && t.IsEnum && semiFuncEnumNames.Contains(t.Name)) return true;
+                return false;
+            }
+
+            var itemTypes = allTypes.Where(IsItemType).ToList();
+            // Also include nested types of Item* classes (e.g. ItemGun+State)
+            var nestedOfItem = allTypes.Where(t => t.DeclaringType != null && t.DeclaringType.Name.StartsWith("Item") && t.DeclaringType.DeclaringType == null && !t.FullName.Contains("<>")).ToList();
+            foreach (var nt in nestedOfItem)
+                if (!itemTypes.Contains(nt)) itemTypes.Add(nt);
+
+            // Categorize
+            var semiFuncEnums = itemTypes.Where(t => t.DeclaringType?.Name == "SemiFunc" && t.IsEnum).OrderBy(t => t.Name).ToList();
+            var itemEnums = itemTypes.Where(t => t.IsEnum && t.DeclaringType?.Name != "SemiFunc").OrderBy(t => t.FullName).ToList();
+            var coreTypeNames = new[] { "Item", "ItemAttributes", "ItemManager" };
+            var coreTypes = itemTypes.Where(t => coreTypeNames.Contains(t.Name) && t.DeclaringType == null).OrderBy(t => Array.IndexOf(coreTypeNames, t.Name)).ToList();
+            var concreteTypes = itemTypes.Where(t => !t.IsEnum && t.DeclaringType == null && !coreTypeNames.Contains(t.Name)).OrderBy(t => t.Name).ToList();
+
+            Console.WriteLine("# Items");
+            Console.WriteLine();
+
+            // --- Enums section ---
+            Console.WriteLine("## Enums");
+            Console.WriteLine();
+
+            void WriteEnum(Type t, string displayName)
+            {
+                Console.WriteLine($"### {displayName}");
+                Console.WriteLine();
+                Console.WriteLine("| Value | Name |");
+                Console.WriteLine("|-------|------|");
+                foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly))
+                {
+                    var raw = f.GetRawConstantValue();
+                    Console.WriteLine($"| {raw} | {f.Name} |");
+                }
+                Console.WriteLine();
+            }
+
+            foreach (var e in semiFuncEnums)
+                WriteEnum(e, $"SemiFunc.{e.Name}");
+
+            // --- Core types section ---
+            Console.WriteLine("## Core Types");
+            Console.WriteLine();
+
+            void WriteClassSection(Type t, string heading)
+            {
+                Console.WriteLine($"### {heading}");
+                Console.WriteLine();
+                if (t.BaseType != null)
+                    Console.WriteLine($"Base: `{PrettyType(t.BaseType)}`");
+                Console.WriteLine();
+
+                var fields = t.GetFields(bf).ToArray();
+                if (fields.Length > 0)
+                {
+                    Console.WriteLine("#### Fields");
+                    Console.WriteLine();
+                    Console.WriteLine("| Modifier | Type | Name |");
+                    Console.WriteLine("|----------|------|------|");
+                    foreach (var f in fields)
+                    {
+                        var vis = f.IsPublic ? "public" : f.IsPrivate ? "private" : "protected";
+                        var stat = f.IsStatic ? " static" : "";
+                        Console.WriteLine($"| {vis}{stat} | `{PrettyType(f.FieldType)}` | {f.Name} |");
+                    }
+                    Console.WriteLine();
+                }
+
+                var props = t.GetProperties(bf).ToArray();
+                if (props.Length > 0)
+                {
+                    Console.WriteLine("#### Properties");
+                    Console.WriteLine();
+                    Console.WriteLine("| Type | Name |");
+                    Console.WriteLine("|------|------|");
+                    foreach (var p in props)
+                    {
+                        var stat = (p.GetMethod?.IsStatic ?? p.SetMethod?.IsStatic ?? false) ? " (static)" : "";
+                        Console.WriteLine($"| `{PrettyType(p.PropertyType)}` | {p.Name}{stat} |");
+                    }
+                    Console.WriteLine();
+                }
+
+                // Nested enums
+                var nested = itemEnums.Where(e => e.DeclaringType == t).ToList();
+                foreach (var ne in nested)
+                    WriteEnum(ne, $"{t.Name}.{ne.Name}");
+            }
+
+            foreach (var t in coreTypes)
+                WriteClassSection(t, t.Name);
+
+            // --- Concrete item classes section ---
+            Console.WriteLine("## Concrete Item Classes");
+            Console.WriteLine();
+
+            foreach (var t in concreteTypes)
+                WriteClassSection(t, t.Name);
+        }
     }
 }
