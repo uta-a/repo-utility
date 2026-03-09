@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 
@@ -6,6 +7,9 @@ namespace REPOUtility;
 
 public static class PlayerHelper
 {
+    private static readonly FieldInfo _deadSetField = AccessTools.Field(typeof(PlayerAvatar), "deadSet");
+    private static readonly MethodInfo _reviveMethod = AccessTools.Method(typeof(PlayerAvatar), "Revive");
+
     public static PlayerAvatar GetLocalPlayer()
     {
         return SemiFunc.PlayerAvatarLocal();
@@ -95,5 +99,39 @@ public static class PlayerHelper
     public static bool IsMasterClient()
     {
         return SemiFunc.IsMasterClientOrSingleplayer();
+    }
+
+    public static bool IsDead(PlayerAvatar player)
+    {
+        if (player == null) return false;
+        return (bool)_deadSetField.GetValue(player);
+    }
+
+    public static void Revive(PlayerAvatar player)
+    {
+        if (!SemiFunc.IsMasterClientOrSingleplayer())
+        {
+            Plugin.Log.LogWarning("Revive: host-only method called from client");
+            return;
+        }
+
+        if (player == null) return;
+
+        if (!IsDead(player))
+        {
+            Plugin.Log.LogWarning("Revive: player is not dead");
+            return;
+        }
+
+        _reviveMethod.Invoke(player, null);
+        Plugin.Log.LogInfo($"Revived player: {player.name}");
+    }
+
+    public static void Revive(PlayerAvatar player, Vector3 position)
+    {
+        Revive(player);
+
+        if (!IsDead(player))
+            TeleportHelper.TeleportPlayer(player, position);
     }
 }

@@ -39,6 +39,9 @@ public class Plugin : BaseUnityPlugin { }
 | AddCurrency | `void AddCurrency(int amount)` | 通貨を加算 |
 | SetLives | `void SetLives(int lives)` | 残機数を設定 |
 | IsMasterClient | `bool IsMasterClient()` | ホストまたはシングルプレイヤーか判定 |
+| IsDead | `bool IsDead(PlayerAvatar player)` | プレイヤーが死亡しているか判定 |
+| Revive | `void Revive(PlayerAvatar player)` | 死亡したプレイヤーを復活させる（**ホスト専用**） |
+| Revive | `void Revive(PlayerAvatar player, Vector3 position)` | 指定位置に復活させる（**ホスト専用**） |
 
 ## 使用例
 
@@ -96,8 +99,37 @@ if (PlayerHelper.IsMasterClient())
 }
 ```
 
+### 死亡した全プレイヤーを復活させる
+
+```csharp
+if (PlayerHelper.IsMasterClient())
+{
+    foreach (var player in PlayerHelper.GetAllPlayers())
+    {
+        if (PlayerHelper.IsDead(player))
+        {
+            PlayerHelper.Revive(player);
+        }
+    }
+}
+```
+
+### 死亡したプレイヤーを自分の位置に復活させる
+
+```csharp
+var local = PlayerHelper.GetLocalPlayer();
+var target = PlayerHelper.FindByName("PlayerName");
+if (target != null && PlayerHelper.IsDead(target))
+{
+    PlayerHelper.Revive(target, local.transform.position);
+}
+```
+
 ## 注意事項
 
 - `Heal` / `Hurt` はローカルプレイヤーとリモートプレイヤーで内部的に異なるメソッドを呼び分けている。対象プレイヤーを意識する必要はない。
 - `SetGodMode` は Harmony の `AccessTools` でプライベートフィールドに直接アクセスしている。ゲームのアップデートで内部構造が変更された場合は動作しなくなる可能性がある。
 - `GetCurrency` / `SetCurrency` / `AddCurrency` / `SetLives` はラン全体の状態に影響する。
+- `Revive` はホスト（MasterClient）またはシングルプレイヤー専用。クライアントから呼び出すと警告ログが出力される。
+- `IsDead` は `AccessTools` でプライベートフィールド `deadSet` にアクセスしている。ゲームのアップデートで内部構造が変更された場合は動作しなくなる可能性がある。
+- `Revive` は内部的に `PlayerAvatar.Revive()` を Reflection で呼び出している。エフェクト・HP回復・状態リセットはゲーム側で自動実行される。
