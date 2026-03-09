@@ -25,8 +25,8 @@ public class Plugin : BaseUnityPlugin { }
 
 | メソッド | シグネチャ | 説明 |
 |---|---|---|
-| SpawnEnemy | `GameObject SpawnEnemy(EnemySetup setup, Vector3 position)` | 指定セットアップのエネミーをスポーン（**ホスト専用**） |
-| SpawnRandomEnemy | `GameObject SpawnRandomEnemy(int tier, Vector3 position)` | 指定ティアからランダムにエネミーをスポーン（**ホスト専用**） |
+| SpawnEnemy | `GameObject SpawnEnemy(EnemySetup setup, Vector3 position, bool enableAI = true)` | 指定セットアップのエネミーをスポーン（**ホスト専用**） |
+| SpawnRandomEnemy | `GameObject SpawnRandomEnemy(int tier, Vector3 position, bool enableAI = true)` | 指定ティアからランダムにエネミーをスポーン（**ホスト専用**） |
 | SpawnItem | `GameObject SpawnItem(string prefabPath, Vector3 position)` | アイテムをスポーン（**ホスト専用**） |
 | SpawnValuable | `GameObject SpawnValuable(string prefabPath, Vector3 position)` | バリュアブルをスポーン（**ホスト専用**） |
 | SpawnTeleportEffect | `void SpawnTeleportEffect(Vector3 position)` | テレポートエフェクトを再生 |
@@ -104,10 +104,18 @@ if (PlayerHelper.IsMasterClient())
 }
 ```
 
+## enableAI パラメータ
+
+`SpawnEnemy` / `SpawnRandomEnemy` の `enableAI` パラメータ（デフォルト `true`）は、スポーン後に敵AIを自動起動するかどうかを制御する。
+
+- **`true`（デフォルト）**: `EnemySetup.spawnObjects` の全要素をスポーンし、`EnemyParent.SetupDone` を待ってから `EnemyParent.Spawn()` を Reflection で呼び出してAIを起動する。タイムアウトは5秒。
+- **`false`**: Instantiate のみ行い、AIは起動しない。先頭の `spawnObjects[0]` のみスポーンしていた旧動作と異なり、全要素をスポーンするがAI起動ステップをスキップする。
+
 ## 注意事項
 
 - **全てのスポーンメソッドはホスト（MasterClient）またはシングルプレイヤー専用**。クライアントから呼び出すと警告ログが出力され `null` が返る。
 - マルチプレイ時は `PhotonNetwork.Instantiate` でネットワーク同期付きスポーンが行われる。シングルプレイ時は `Object.Instantiate` が使われる。
 - `SpawnItem` / `SpawnValuable` の `prefabPath` は `Resources` フォルダからの相対パス（拡張子なし）を指定する。存在しないパスを指定するとシングルプレイ時に警告ログが出力され `null` が返る。
-- `SpawnEnemy` は `EnemySetup.spawnObjects` の先頭要素を使用する。セットアップに有効なスポーンオブジェクトが含まれていない場合は `null` が返る。
+- `SpawnEnemy` は `EnemySetup.spawnObjects` の全要素をスポーンし、先頭オブジェクトの `GameObject` を返す。有効なスポーンオブジェクトが含まれていない場合は `null` が返る。
 - `SpawnTeleportEffect` は内部的に `TeleportHelper.PlayTeleportEffect` を呼び出している。
+- AI起動には `Plugin.Instance`（`MonoBehaviour` シングルトン）によるコルーチンを使用している。

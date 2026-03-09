@@ -8,7 +8,7 @@ public static class EnemyHelper
 {
     public static List<EnemyParent> GetAllSpawned()
     {
-        return EnemyDirector.instance.enemiesSpawned;
+        return new List<EnemyParent>(EnemyDirector.instance.enemiesSpawned);
     }
 
     public static Enemy FindNearest(Vector3 position, float range)

@@ -20,7 +20,7 @@ public static class ItemHelper
 
     public static List<ItemAttributes> GetAllItems()
     {
-        return ItemManager.instance.spawnedItems;
+        return new List<ItemAttributes>(ItemManager.instance.spawnedItems);
     }
 
     public static List<ItemAttributes> FindItemsByName(string name)

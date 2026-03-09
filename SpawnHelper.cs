@@ -1,4 +1,7 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
+using HarmonyLib;
 using Photon.Pun;
 using UnityEngine;
 
@@ -6,7 +9,11 @@ namespace REPOUtility;
 
 public static class SpawnHelper
 {
-    public static GameObject SpawnEnemy(EnemySetup setup, Vector3 position)
+    private static readonly FieldInfo _setupDoneField = AccessTools.Field(typeof(EnemyParent), "SetupDone");
+    private static readonly FieldInfo _spawnedField = AccessTools.Field(typeof(EnemyParent), "Spawned");
+    private static readonly MethodInfo _spawnMethod = AccessTools.Method(typeof(EnemyParent), "Spawn");
+
+    public static GameObject SpawnEnemy(EnemySetup setup, Vector3 position, bool enableAI = true)
     {
         if (!SemiFunc.IsMasterClientOrSingleplayer())
         {
@@ -20,20 +27,51 @@ public static class SpawnHelper
             return null;
         }
 
-        var prefabRef = setup.spawnObjects[0];
-        if (prefabRef == null || !prefabRef.IsValid())
+        GameObject firstSpawned = null;
+
+        foreach (var prefabRef in setup.spawnObjects)
         {
-            Plugin.Log.LogWarning("SpawnEnemy: spawn object prefab is null or invalid");
-            return null;
+            if (prefabRef == null || !prefabRef.IsValid())
+                continue;
+
+            GameObject spawned;
+            if (PhotonNetwork.IsConnected)
+                spawned = PhotonNetwork.Instantiate(prefabRef.ResourcePath, position, Quaternion.identity);
+            else
+                spawned = Object.Instantiate(prefabRef.Prefab, position, Quaternion.identity);
+
+            if (spawned == null) continue;
+
+            firstSpawned ??= spawned;
+
+            var enemyParent = spawned.GetComponent<EnemyParent>()
+                           ?? spawned.GetComponentInChildren<EnemyParent>();
+
+            if (enemyParent != null)
+            {
+                var list = EnemyDirector.instance.enemiesSpawned;
+                if (!list.Contains(enemyParent))
+                    list.Add(enemyParent);
+            }
+
+            var agent = spawned.GetComponentInChildren<UnityEngine.AI.NavMeshAgent>();
+            if (agent != null)
+            {
+                if (UnityEngine.AI.NavMesh.SamplePosition(position, out var hit, 10f, UnityEngine.AI.NavMesh.AllAreas))
+                {
+                    spawned.transform.position = hit.position;
+                    agent.Warp(hit.position);
+                }
+            }
+
+            if (enableAI && enemyParent != null)
+                Plugin.Instance.StartCoroutine(WaitAndSpawn(enemyParent));
         }
 
-        if (PhotonNetwork.IsConnected)
-            return PhotonNetwork.Instantiate(prefabRef.ResourcePath, position, Quaternion.identity);
-        else
-            return Object.Instantiate(prefabRef.Prefab, position, Quaternion.identity);
+        return firstSpawned;
     }
 
-    public static GameObject SpawnRandomEnemy(int tier, Vector3 position)
+    public static GameObject SpawnRandomEnemy(int tier, Vector3 position, bool enableAI = true)
     {
         if (!SemiFunc.IsMasterClientOrSingleplayer())
         {
@@ -49,7 +87,24 @@ public static class SpawnHelper
         }
 
         var setup = setups[Random.Range(0, setups.Count)];
-        return SpawnEnemy(setup, position);
+        return SpawnEnemy(setup, position, enableAI);
+    }
+
+    private static IEnumerator WaitAndSpawn(EnemyParent enemyParent)
+    {
+        float elapsed = 0f;
+        while (elapsed < 5f)
+        {
+            if (enemyParent == null) yield break;
+            if ((bool)_setupDoneField.GetValue(enemyParent)) break;
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (enemyParent == null) yield break;
+
+        if (!(bool)_spawnedField.GetValue(enemyParent))
+            _spawnMethod.Invoke(enemyParent, null);
     }
 
     public static GameObject SpawnItem(string prefabPath, Vector3 position)

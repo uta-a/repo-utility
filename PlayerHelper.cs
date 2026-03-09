@@ -13,7 +13,7 @@ public static class PlayerHelper
 
     public static List<PlayerAvatar> GetAllPlayers()
     {
-        return SemiFunc.PlayerGetAll();
+        return new List<PlayerAvatar>(SemiFunc.PlayerGetAll());
     }
 
     public static PlayerAvatar FindByName(string name)
